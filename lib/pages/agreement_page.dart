@@ -1,9 +1,46 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:student_mobile/pages/home_page.dart';
+import 'package:student_mobile/pages/login_page.dart';
+import 'package:student_mobile/services/auth_repository.dart';
+import 'package:student_mobile/services/student_repository.dart';
 
-class AgreementPage extends StatelessWidget {
+class AgreementPage extends StatefulWidget {
   const AgreementPage({super.key});
+
+  @override
+  State<AgreementPage> createState() => _AgreementPageState();
+}
+
+class _AgreementPageState extends State<AgreementPage> {
+  final AuthRepository _authRepository = AuthRepository();
+  final StudentRepository _studentRepository = StudentRepository();
+  bool _isSaving = false;
+
+  Future<void> _acceptAgreement() async {
+    setState(() => _isSaving = true);
+
+    try {
+      await _studentRepository.acceptPrivacyAgreement();
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const HomePage()),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not save agreement: $error')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -140,31 +177,35 @@ class AgreementPage extends StatelessWidget {
                             ],
                           ),
                           child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const HomePage(),
-                                ),
-                              );
-                            },
+                            onPressed: _isSaving ? null : _acceptAgreement,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF00E676), // Bright green
+                              backgroundColor: const Color(
+                                0xFF00E676,
+                              ), // Bright green
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               padding: EdgeInsets.zero,
                               elevation: 0,
                             ),
-                            child: Text(
-                              "I Agree, Let's Bloom!",
-                              style: GoogleFonts.quicksand(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
+                            child: _isSaving
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    "I Agree, Let's Bloom!",
+                                    style: GoogleFonts.quicksand(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
                           ),
                         ),
                       ),
@@ -214,9 +255,18 @@ class AgreementPage extends StatelessWidget {
                                         ),
                                       ),
                                       TextButton(
-                                        onPressed: () {
-                                          Navigator.pop(dialogContext); // Close dialog
-                                          Navigator.pop(context); // Redirect to Login page
+                                        onPressed: () async {
+                                          await _authRepository.signOut();
+                                          if (!context.mounted) return;
+                                          Navigator.pop(dialogContext);
+                                          Navigator.pushAndRemoveUntil(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  const LoginPage(),
+                                            ),
+                                            (route) => false,
+                                          );
                                         },
                                         child: Text(
                                           'Yes, Go Back',
@@ -232,7 +282,9 @@ class AgreementPage extends StatelessWidget {
                               );
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFCFD8DC), // Light grey
+                              backgroundColor: const Color(
+                                0xFFCFD8DC,
+                              ), // Light grey
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
@@ -283,11 +335,7 @@ class AgreementPage extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
-          icon,
-          color: iconColor,
-          size: 32,
-        ),
+        Icon(icon, color: iconColor, size: 32),
         const SizedBox(width: 16),
         Expanded(
           child: RichText(
@@ -300,15 +348,11 @@ class AgreementPage extends StatelessWidget {
               children: [
                 TextSpan(
                   text: title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 TextSpan(
                   text: description,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
               ],
             ),

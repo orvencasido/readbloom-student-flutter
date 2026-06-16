@@ -1,17 +1,51 @@
-# student_mobile
+# ReadBloom Student Flutter
 
-A new Flutter project.
+Flutter reading app that loads reading passages and quiz questions from Supabase.
 
-## Getting Started
+## Supabase setup
 
-This project is a starting point for a Flutter application.
+Run [supabase/schema.sql](/home/orven/Documents/thesis/readbloom/readbloom-student-flutter/supabase/schema.sql) in the Supabase SQL editor. It creates:
 
-A few resources to get you started if this is your first Flutter project:
+- `books`
+- `quiz_questions`
+- `profiles`
+- `student_progress`
+- `completed_books`
+- public read policies for active books and their quiz questions
+- per-user policies for profile and progress data
+- an auth trigger that creates a profile/progress row when a user signs up
+- a `complete_book(book_id)` RPC that records finished books once per user
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Add one row to `books`, then add related rows to `quiz_questions` using the book's `id`.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Example `quiz_questions.choices` value:
+
+```json
+["Choice A", "Choice B", "Choice C"]
+```
+
+## Auth flow
+
+Signup creates a Supabase Auth user with:
+
+- full name
+- email
+- password
+- section
+- year level
+
+The database trigger copies the signup metadata into `profiles` and creates a starter `student_progress` row with `books_completed = 0` and `days_streak = 0`.
+
+The safety/privacy agreement is stored in `profiles.privacy_agreed_at`. Once it is set, the app skips the agreement screen on future logins.
+
+## Running the app
+
+Provide your Supabase project values at runtime:
+
+```bash
+flutter run \
+  --dart-define=SUPABASE_URL=https://your-project.supabase.co \
+  --dart-define=SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+```
+
+Without these values, the app opens but the home book list shows a setup error instead of dummy content.

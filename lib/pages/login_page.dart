@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:student_mobile/pages/agreement_page.dart';
+import 'package:student_mobile/pages/signup_page.dart';
+import 'package:student_mobile/pages/home_page.dart';
+import 'package:student_mobile/services/auth_repository.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -12,12 +15,58 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final AuthRepository _authRepository = AuthRepository();
+  bool _isLoading = false;
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _login() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showSnackBar('Enter your email and password.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final hasAcceptedAgreement = await _authRepository.signIn(
+        email: email,
+        password: password,
+      );
+
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              hasAcceptedAgreement ? const HomePage() : const AgreementPage(),
+        ),
+        (route) => false,
+      );
+    } catch (error) {
+      if (mounted) {
+        _showSnackBar('Login failed: ${error.toString()}');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -123,8 +172,13 @@ class _LoginPageState extends State<LoginPage> {
                               size: 20,
                             ),
                             filled: true,
-                            fillColor: const Color(0xFFE6FFD2), // Pastel lime/green background
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            fillColor: const Color(
+                              0xFFE6FFD2,
+                            ), // Pastel lime/green background
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(30),
                               borderSide: BorderSide.none,
@@ -182,8 +236,13 @@ class _LoginPageState extends State<LoginPage> {
                               size: 20,
                             ),
                             filled: true,
-                            fillColor: const Color(0xFFE6FFD2), // Pastel lime/green background
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            fillColor: const Color(
+                              0xFFE6FFD2,
+                            ), // Pastel lime/green background
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(30),
                               borderSide: BorderSide.none,
@@ -239,14 +298,7 @@ class _LoginPageState extends State<LoginPage> {
                       ],
                     ),
                     child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const AgreementPage(),
-                          ),
-                        );
-                      },
+                      onPressed: _isLoading ? null : _login,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
@@ -254,15 +306,24 @@ class _LoginPageState extends State<LoginPage> {
                           borderRadius: BorderRadius.circular(30),
                         ),
                       ),
-                      child: Text(
-                        'LOG IN',
-                        style: GoogleFonts.quicksand(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.black,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.black,
+                              ),
+                            )
+                          : Text(
+                              'LOG IN',
+                              style: GoogleFonts.quicksand(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -280,14 +341,21 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       GestureDetector(
                         onTap: () {
-                          // Sign Up screen
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SignupPage(),
+                            ),
+                          );
                         },
                         child: Text(
                           'Sign up',
                           style: GoogleFonts.quicksand(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
-                            color: const Color(0xFF3B56FF), // Blue/purple accent
+                            color: const Color(
+                              0xFF3B56FF,
+                            ), // Blue/purple accent
                           ),
                         ),
                       ),

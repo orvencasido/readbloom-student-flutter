@@ -1,86 +1,103 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:student_mobile/models/student_progress.dart';
+import 'package:student_mobile/services/student_repository.dart';
 
-class JourneyPage extends StatelessWidget {
+class JourneyPage extends StatefulWidget {
   const JourneyPage({super.key});
 
   @override
+  State<JourneyPage> createState() => _JourneyPageState();
+}
+
+class _JourneyPageState extends State<JourneyPage> {
+  final StudentRepository _studentRepository = StudentRepository();
+  late Future<StudentProgress> _progressFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _progressFuture = _studentRepository.fetchCurrentProgress();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Signpost & Stats Content
-        Expanded(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: Column(
-              children: [
-                const SizedBox(height: 30),
-                // Signpost assembly wrapped in a stack
-                Stack(
-                  alignment: Alignment.topCenter,
+    return FutureBuilder<StudentProgress>(
+      future: _progressFuture,
+      builder: (context, snapshot) {
+        final progress =
+            snapshot.data ??
+            const StudentProgress(userId: '', booksCompleted: 0, daysStreak: 0);
+
+        return Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
                   children: [
-                    // The main vertical wooden post
-                    Container(
-                      width: 24,
-                      height: 520,
-                      margin: const EdgeInsets.only(top: 20),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF8D6E63), // Brown post
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: const Color(0xFF5D4037),
-                          width: 2.0,
-                        ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color.fromRGBO(0, 0, 0, 0.15),
-                            blurRadius: 4,
-                            offset: Offset(2, 2),
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Horizontal Wooden Boards Column
-                    Padding(
-                      padding: const EdgeInsets.only(top: 30.0),
-                      child: Column(
-                        children: [
-                          // Board 1: Learning Completed
-                          _buildWoodenBoard(
-                            iconWidget: _buildClipboardIcon(),
-                            title: 'Learning Completed',
-                            value: '20/40',
-                          ),
-                          const SizedBox(height: 24),
-                          // Board 2: Days Streak
-                          _buildWoodenBoard(
-                            iconWidget: const Icon(
-                              Icons.star_rounded,
-                              color: Color(0xFFFFD54F), // Gold star
-                              size: 54,
+                    const SizedBox(height: 30),
+                    Stack(
+                      alignment: Alignment.topCenter,
+                      children: [
+                        Container(
+                          width: 24,
+                          height: 520,
+                          margin: const EdgeInsets.only(top: 20),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF8D6E63),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: const Color(0xFF5D4037),
+                              width: 2.0,
                             ),
-                            title: 'Days Streak',
-                            value: '7 days',
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color.fromRGBO(0, 0, 0, 0.15),
+                                blurRadius: 4,
+                                offset: Offset(2, 2),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 24),
-                          // Board 3: Achievement Explorer
-                          _buildWoodenBoard(
-                            iconWidget: _buildMedalIcon(),
-                            title: 'Achievement',
-                            value: 'EXPLORER',
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 30.0),
+                          child: Column(
+                            children: [
+                              _buildWoodenBoard(
+                                iconWidget: _buildClipboardIcon(),
+                                title: 'Books Completed',
+                                value: '${progress.booksCompleted}',
+                              ),
+                              const SizedBox(height: 24),
+                              _buildWoodenBoard(
+                                iconWidget: const Icon(
+                                  Icons.star_rounded,
+                                  color: Color(0xFFFFD54F),
+                                  size: 54,
+                                ),
+                                title: 'Days Streak',
+                                value: '${progress.daysStreak} days',
+                              ),
+                              const SizedBox(height: 24),
+                              _buildWoodenBoard(
+                                iconWidget: _buildMedalIcon(),
+                                title: 'Achievement',
+                                value: progress.achievementTitle,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 20),
                   ],
                 ),
-                const SizedBox(height: 20),
-              ],
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -112,11 +129,7 @@ class JourneyPage extends StatelessWidget {
       child: Row(
         children: [
           // Icon Container Left
-          Container(
-            width: 70,
-            alignment: Alignment.center,
-            child: iconWidget,
-          ),
+          Container(width: 70, alignment: Alignment.center, child: iconWidget),
           const SizedBox(width: 12),
           // Text block Right
           Expanded(
@@ -264,11 +277,7 @@ class JourneyPage extends StatelessWidget {
             ],
           ),
           child: const Center(
-            child: Icon(
-              Icons.star_rounded,
-              color: Colors.white,
-              size: 24,
-            ),
+            child: Icon(Icons.star_rounded, color: Colors.white, size: 24),
           ),
         ),
       ],

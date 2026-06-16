@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:camera/camera.dart';
+import 'package:student_mobile/models/reading_book.dart';
 import 'package:student_mobile/pages/quiz_page.dart';
 
 class PreviewPage extends StatefulWidget {
-  const PreviewPage({super.key});
+  const PreviewPage({super.key, required this.book});
+
+  final ReadingBook book;
 
   @override
   State<PreviewPage> createState() => _PreviewPageState();
@@ -97,7 +100,10 @@ class _PreviewPageState extends State<PreviewPage> {
                 const SizedBox(height: 60),
                 // Heading panel "Preview your Video"
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
@@ -183,7 +189,10 @@ class _PreviewPageState extends State<PreviewPage> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
                         ),
                       ),
                     ),
@@ -207,7 +216,8 @@ class _PreviewPageState extends State<PreviewPage> {
                           showDialog(
                             context: context,
                             barrierDismissible: false,
-                            builder: (context) => const UploadDialog(),
+                            builder: (context) =>
+                                UploadDialog(book: widget.book),
                           );
                         },
                         icon: const Icon(
@@ -229,7 +239,10 @@ class _PreviewPageState extends State<PreviewPage> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
                         ),
                       ),
                     ),
@@ -246,10 +259,7 @@ class _PreviewPageState extends State<PreviewPage> {
 
   Widget _buildCameraWidget() {
     if (_hasCameraError) {
-      return Image.asset(
-        'assets/icons/kai.png',
-        fit: BoxFit.cover,
-      );
+      return Image.asset('assets/icons/kai.png', fit: BoxFit.cover);
     }
 
     if (_isCameraInitialized && _cameraController != null) {
@@ -264,15 +274,15 @@ class _PreviewPageState extends State<PreviewPage> {
     }
 
     return const Center(
-      child: CircularProgressIndicator(
-        color: Color(0xFFF48FE1),
-      ),
+      child: CircularProgressIndicator(color: Color(0xFFF48FE1)),
     );
   }
 }
 
 class UploadDialog extends StatefulWidget {
-  const UploadDialog({super.key});
+  const UploadDialog({super.key, required this.book});
+
+  final ReadingBook book;
 
   @override
   State<UploadDialog> createState() => _UploadDialogState();
@@ -346,7 +356,7 @@ class _UploadDialogState extends State<UploadDialog> {
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const QuizPage(),
+                      builder: (context) => QuizPage(book: widget.book),
                     ),
                   );
                 },

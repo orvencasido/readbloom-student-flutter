@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:camera/camera.dart';
+import 'package:student_mobile/models/reading_book.dart';
 import 'package:student_mobile/pages/preview_page.dart';
 
-
 class ReadingPage extends StatefulWidget {
-  const ReadingPage({super.key});
+  const ReadingPage({super.key, required this.book});
+
+  final ReadingBook book;
 
   @override
   State<ReadingPage> createState() => _ReadingPageState();
 }
 
-class _ReadingPageState extends State<ReadingPage> with SingleTickerProviderStateMixin {
+class _ReadingPageState extends State<ReadingPage>
+    with SingleTickerProviderStateMixin {
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
   bool _hasCameraError = false;
@@ -29,7 +32,10 @@ class _ReadingPageState extends State<ReadingPage> with SingleTickerProviderStat
       duration: const Duration(milliseconds: 800),
       vsync: this,
     )..repeat(reverse: true);
-    _blinkAnimation = Tween<double>(begin: 1.0, end: 0.1).animate(_blinkController);
+    _blinkAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.1,
+    ).animate(_blinkController);
   }
 
   Future<void> _initializeCamera() async {
@@ -135,7 +141,7 @@ class _ReadingPageState extends State<ReadingPage> with SingleTickerProviderStat
                   clipBehavior: Clip.none,
                   children: [
                     // Main Story Text Box (White box with green border)
-                     Container(
+                    Container(
                       width: double.infinity,
                       margin: const EdgeInsets.only(top: 40),
                       decoration: BoxDecoration(
@@ -158,7 +164,7 @@ class _ReadingPageState extends State<ReadingPage> with SingleTickerProviderStat
                           const SizedBox(height: 16),
                           // Story Title
                           Text(
-                            'THE TWO BEST FRIENDS',
+                            widget.book.title.toUpperCase(),
                             style: GoogleFonts.quicksand(
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
@@ -169,9 +175,7 @@ class _ReadingPageState extends State<ReadingPage> with SingleTickerProviderStat
                           const SizedBox(height: 16),
                           // Story body paragraphs
                           Text(
-                            'Once there were two friends a squirrel and a puppy. They used to live and play together. The squirrel was very sporty and always won the game. The puppy used to feel bad and thought that it was of no use.\n\n'
-                            'One day, it started raining heavily. The squirrel was in high spirits. He started doing antics but suddenly, lost his balance and fell in the rain water.\n\n'
-                            'He called his friend, the puppy for help. The puppy came to his rescue. The squirrel climbed on its back and reached a safe place. He thanked his friend for saving his life.',
+                            widget.book.passage,
                             style: GoogleFonts.quicksand(
                               fontSize: 18.0,
                               fontWeight: FontWeight.w600,
@@ -283,12 +287,14 @@ class _ReadingPageState extends State<ReadingPage> with SingleTickerProviderStat
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const PreviewPage(),
+                          builder: (context) => PreviewPage(book: widget.book),
                         ),
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4A70FF), // Custom blue button color
+                      backgroundColor: const Color(
+                        0xFF4A70FF,
+                      ), // Custom blue button color
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(24),
                       ),
@@ -315,10 +321,7 @@ class _ReadingPageState extends State<ReadingPage> with SingleTickerProviderStat
 
   Widget _buildCameraWidget() {
     if (_hasCameraError) {
-      return Image.asset(
-        'assets/icons/kai.png',
-        fit: BoxFit.cover,
-      );
+      return Image.asset('assets/icons/kai.png', fit: BoxFit.cover);
     }
 
     if (_isCameraInitialized && _cameraController != null) {
@@ -333,9 +336,7 @@ class _ReadingPageState extends State<ReadingPage> with SingleTickerProviderStat
     }
 
     return const Center(
-      child: CircularProgressIndicator(
-        color: Color(0xFFF48FE1),
-      ),
+      child: CircularProgressIndicator(color: Color(0xFFF48FE1)),
     );
   }
 }

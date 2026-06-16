@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:camera/camera.dart';
+import 'package:student_mobile/models/reading_book.dart';
 import 'package:student_mobile/pages/reading_page.dart';
 
-
 class QuestPage extends StatefulWidget {
-  const QuestPage({super.key});
+  const QuestPage({super.key, required this.book});
+
+  final ReadingBook book;
 
   @override
   State<QuestPage> createState() => _QuestPageState();
@@ -127,7 +129,10 @@ class _QuestPageState extends State<QuestPage> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: Colors.black, width: 3.0),
+                              border: Border.all(
+                                color: Colors.black,
+                                width: 3.0,
+                              ),
                               boxShadow: const [
                                 BoxShadow(
                                   color: Color.fromRGBO(0, 0, 0, 0.15),
@@ -179,7 +184,10 @@ class _QuestPageState extends State<QuestPage> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color.fromRGBO(0, 0, 0, 0.08), width: 1.0),
+                              border: Border.all(
+                                color: const Color.fromRGBO(0, 0, 0, 0.08),
+                                width: 1.0,
+                              ),
                               boxShadow: [
                                 BoxShadow(
                                   color: const Color.fromRGBO(0, 0, 0, 0.08),
@@ -193,7 +201,8 @@ class _QuestPageState extends State<QuestPage> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => const ReadingPage(),
+                                    builder: (context) =>
+                                        ReadingPage(book: widget.book),
                                   ),
                                 );
                               },
@@ -214,7 +223,10 @@ class _QuestPageState extends State<QuestPage> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.white,
                                 elevation: 0,
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 12,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(20),
                                 ),
@@ -225,7 +237,7 @@ class _QuestPageState extends State<QuestPage> {
 
                           // Subtitle duration description
                           Text(
-                            '3 minutes to read',
+                            '${widget.book.estimatedMinutesToRead} minutes to read',
                             style: GoogleFonts.quicksand(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -262,10 +274,7 @@ class _QuestPageState extends State<QuestPage> {
   Widget _buildCameraWidget() {
     if (_hasCameraError) {
       // Fallback avatar when camera fails (e.g. simulator)
-      return Image.asset(
-        'assets/icons/kai.png',
-        fit: BoxFit.cover,
-      );
+      return Image.asset('assets/icons/kai.png', fit: BoxFit.cover);
     }
 
     if (_isCameraInitialized && _cameraController != null) {
@@ -281,9 +290,7 @@ class _QuestPageState extends State<QuestPage> {
 
     // Loader while camera is startup initializing
     return const Center(
-      child: CircularProgressIndicator(
-        color: Color(0xFFF48FE1),
-      ),
+      child: CircularProgressIndicator(color: Color(0xFFF48FE1)),
     );
   }
 }

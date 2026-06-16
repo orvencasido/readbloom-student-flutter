@@ -12,6 +12,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
   camera: ^0.10.5+9
+  supabase_flutter: ^2.0.0
 
 dev_dependencies:
   flutter_test:
@@ -23,4 +24,3 @@ flutter:
   assets:
     - assets/icons/logo.png
     - assets/icons/kai.png
-
