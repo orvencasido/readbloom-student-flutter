@@ -252,24 +252,6 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  // Forgot Password Link
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: GestureDetector(
-                      onTap: () {
-                        // Forgot password logic
-                      },
-                      child: Text(
-                        'Forgot password?',
-                        style: GoogleFonts.quicksand(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 40),
                   // Login Button
                   Container(
