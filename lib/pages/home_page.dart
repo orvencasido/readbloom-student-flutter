@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:student_mobile/pages/journey_page.dart';
 import 'package:student_mobile/pages/messages_page.dart';
 import 'package:student_mobile/pages/profile_page.dart';
-import 'package:student_mobile/pages/quest_page.dart';
+import 'package:student_mobile/pages/reading_page.dart';
 import 'package:student_mobile/models/reading_book.dart';
 import 'package:student_mobile/models/student_profile.dart';
 import 'package:student_mobile/models/student_progress.dart';
@@ -24,6 +24,7 @@ class _HomePageState extends State<HomePage> {
   late Future<List<ReadingBook>> _booksFuture;
   late Future<StudentProfile> _profileFuture;
   late Future<StudentProgress> _progressFuture;
+  late Future<Set<String>> _completedBookIdsFuture;
 
   @override
   void initState() {
@@ -31,6 +32,7 @@ class _HomePageState extends State<HomePage> {
     _booksFuture = _bookRepository.fetchActiveBooks();
     _profileFuture = _studentRepository.fetchCurrentProfile();
     _progressFuture = _studentRepository.fetchCurrentProgress();
+    _completedBookIdsFuture = _studentRepository.fetchCompletedBookIds();
   }
 
   void _refreshBooks() {
@@ -38,6 +40,7 @@ class _HomePageState extends State<HomePage> {
       _booksFuture = _bookRepository.fetchActiveBooks();
       _profileFuture = _studentRepository.fetchCurrentProfile();
       _progressFuture = _studentRepository.fetchCurrentProgress();
+      _completedBookIdsFuture = _studentRepository.fetchCompletedBookIds();
     });
   }
 
@@ -178,8 +181,8 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
             padding: const EdgeInsets.all(16),
-            child: FutureBuilder<List<ReadingBook>>(
-              future: _booksFuture,
+            child: FutureBuilder<List<Object>>(
+              future: Future.wait([_booksFuture, _completedBookIdsFuture]),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Padding(
@@ -203,7 +206,8 @@ class _HomePageState extends State<HomePage> {
                   );
                 }
 
-                final books = snapshot.data ?? [];
+                final books = snapshot.data?[0] as List<ReadingBook>? ?? [];
+                final completedIds = snapshot.data?[1] as Set<String>? ?? {};
                 if (books.isEmpty) {
                   return _buildBookStateMessage(
                     icon: Icons.menu_book_outlined,
@@ -229,12 +233,21 @@ class _HomePageState extends State<HomePage> {
                       itemCount: books.length,
                       separatorBuilder: (_, index) =>
                           const SizedBox(height: 12),
-                      itemBuilder: (context, index) => _buildBookItem(
-                        book: books[index],
-                        color: index == 0
-                            ? const Color(0xFFA5D6A7)
-                            : const Color(0xFFE0F2F1),
-                      ),
+                      itemBuilder: (context, index) {
+                        final unlocked =
+                            index == 0 ||
+                            completedIds.contains(books[index - 1].id) ||
+                            completedIds.contains(books[index].id);
+                        return _buildBookItem(
+                          book: books[index],
+                          unlocked: unlocked,
+                          color: unlocked
+                              ? (index == 0
+                                    ? const Color(0xFFA5D6A7)
+                                    : const Color(0xFFE0F2F1))
+                              : Colors.grey.shade300,
+                        );
+                      },
                     ),
                   ),
                 );
@@ -255,7 +268,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildBookItem({required ReadingBook book, required Color color}) {
+  Widget _buildBookItem({
+    required ReadingBook book,
+    required Color color,
+    required bool unlocked,
+  }) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -291,15 +308,23 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           ElevatedButton.icon(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => QuestPage(book: book)),
-              );
-            },
-            icon: const Icon(Icons.eco_rounded, size: 14, color: Colors.white),
+            onPressed: unlocked
+                ? () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ReadingPage(book: book),
+                      ),
+                    );
+                  }
+                : null,
+            icon: Icon(
+              unlocked ? Icons.eco_rounded : Icons.lock_rounded,
+              size: 14,
+              color: Colors.white,
+            ),
             label: Text(
-              'Start Quest',
+              unlocked ? 'Start Quest' : 'Locked',
               style: GoogleFonts.quicksand(
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
@@ -431,10 +456,15 @@ class _HomePageState extends State<HomePage> {
               Expanded(
                 child: _buildBadgeCard(
                   color: const Color(0xFF80CBC4),
-                  text: 'Books\n${currentProgress.booksCompleted}',
+                  text: 'Fluency\nLevel ${currentProgress.fluencyLevel}',
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          _buildBadgeCard(
+            color: const Color(0xFFFFCC80),
+            text: 'Comprehension\nLevel ${currentProgress.comprehensionLevel}',
           ),
           const SizedBox(height: 16),
           Text(

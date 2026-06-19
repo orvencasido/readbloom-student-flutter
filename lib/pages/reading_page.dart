@@ -1,7 +1,11 @@
+import 'dart:io';
+
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:camera/camera.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import 'package:student_mobile/models/reading_book.dart';
+import 'package:student_mobile/models/reading_session.dart';
 import 'package:student_mobile/pages/preview_page.dart';
 
 class ReadingPage extends StatefulWidget {
@@ -13,70 +17,145 @@ class ReadingPage extends StatefulWidget {
   State<ReadingPage> createState() => _ReadingPageState();
 }
 
-class _ReadingPageState extends State<ReadingPage>
-    with SingleTickerProviderStateMixin {
-  CameraController? _cameraController;
-  bool _isCameraInitialized = false;
-  bool _hasCameraError = false;
-
-  late AnimationController _blinkController;
-  late Animation<double> _blinkAnimation;
+class _ReadingPageState extends State<ReadingPage> {
+  final SpeechToText _speech = SpeechToText();
+  final Stopwatch _stopwatch = Stopwatch();
+  CameraController? _camera;
+  String _transcript = '';
+  final List<String> _transcriptSegments = [];
+  String? _error;
+  bool _preparing = true;
+  bool _recording = false;
+  bool _finishing = false;
+  bool _handedOff = false;
+  bool _restartScheduled = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeCamera();
-
-    // Blinking animation for Recording dot
-    _blinkController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    )..repeat(reverse: true);
-    _blinkAnimation = Tween<double>(
-      begin: 1.0,
-      end: 0.1,
-    ).animate(_blinkController);
+    _prepareAndRecord();
   }
 
-  Future<void> _initializeCamera() async {
+  Future<void> _prepareAndRecord() async {
     try {
       final cameras = await availableCameras();
-      if (cameras.isEmpty) {
+      if (cameras.isEmpty) throw StateError('No camera is available.');
+      final selected =
+          cameras.cast<CameraDescription?>().firstWhere(
+            (camera) => camera?.lensDirection == CameraLensDirection.front,
+            orElse: () => cameras.first,
+          ) ??
+          cameras.first;
+
+      final camera = CameraController(
+        selected,
+        ResolutionPreset.medium,
+        enableAudio: true,
+      );
+      _camera = camera;
+      await camera.initialize();
+
+      final speechReady = await _speech.initialize(
+        onStatus: (status) {
+          if (status == SpeechToText.doneStatus ||
+              status == SpeechToText.notListeningStatus) {
+            _restartSpeechAfterPause();
+          }
+        },
+        onError: (error) {
+          if (mounted && !_finishing) {
+            setState(() => _error = 'Speech recognition: ${error.errorMsg}');
+          }
+        },
+      );
+      if (!speechReady) {
+        throw StateError(
+          'Microphone or speech-recognition permission was denied.',
+        );
+      }
+
+      await camera.startVideoRecording();
+      _recording = true;
+      await _startListening();
+      _stopwatch.start();
+      if (mounted) {
         setState(() {
-          _hasCameraError = true;
+          _preparing = false;
         });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _preparing = false;
+          _error = error.toString().replaceFirst('Bad state: ', '');
+        });
+      }
+    }
+  }
+
+  Future<void> _startListening() async {
+    if (_finishing || !_recording || _speech.isListening) return;
+    await _speech.listen(
+      onResult: (result) {
+        final words = result.recognizedWords.trim();
+        if (result.finalResult && words.isNotEmpty) {
+          _transcriptSegments.add(words);
+        }
+        if (mounted) {
+          setState(() {
+            _transcript = [
+              ..._transcriptSegments,
+              if (!result.finalResult && words.isNotEmpty) words,
+            ].join(' ').trim();
+          });
+        }
+      },
+      listenOptions: SpeechListenOptions(
+        listenMode: ListenMode.dictation,
+        partialResults: true,
+        cancelOnError: false,
+      ),
+    );
+  }
+
+  void _restartSpeechAfterPause() {
+    if (!_recording || _finishing || _restartScheduled) return;
+    _restartScheduled = true;
+    Future<void>.delayed(const Duration(milliseconds: 250), () async {
+      _restartScheduled = false;
+      if (_recording && !_finishing) await _startListening();
+    });
+  }
+
+  Future<void> _finish() async {
+    final camera = _camera;
+    if (camera == null || !camera.value.isRecordingVideo || _finishing) return;
+    setState(() => _finishing = true);
+    try {
+      _stopwatch.stop();
+      await _speech.stop();
+      final video = await camera.stopVideoRecording();
+      final session = ReadingSession(
+        videoPath: video.path,
+        transcript: _transcript.trim(),
+        duration: _stopwatch.elapsed,
+      );
+      _handedOff = true;
+      if (!mounted) {
+        await session.discard();
         return;
       }
-
-      // Find front camera
-      CameraDescription? frontCamera;
-      for (var camera in cameras) {
-        if (camera.lensDirection == CameraLensDirection.front) {
-          frontCamera = camera;
-          break;
-        }
-      }
-
-      final selectedCamera = frontCamera ?? cameras.first;
-
-      _cameraController = CameraController(
-        selectedCamera,
-        ResolutionPreset.medium,
-        enableAudio: false,
+      await Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PreviewPage(book: widget.book, session: session),
+        ),
       );
-
-      await _cameraController!.initialize();
-
+    } catch (error) {
       if (mounted) {
         setState(() {
-          _isCameraInitialized = true;
-        });
-      }
-    } catch (e) {
-      debugPrint('Camera Initialization Error: $e');
-      if (mounted) {
-        setState(() {
-          _hasCameraError = true;
+          _finishing = false;
+          _error = 'Could not finish recording: $error';
         });
       }
     }
@@ -84,8 +163,18 @@ class _ReadingPageState extends State<ReadingPage>
 
   @override
   void dispose() {
-    _cameraController?.dispose();
-    _blinkController.dispose();
+    _stopwatch.stop();
+    _speech.cancel();
+    final camera = _camera;
+    if (!_handedOff && camera?.value.isRecordingVideo == true) {
+      camera!
+          .stopVideoRecording()
+          .then<void>((file) async {
+            await File(file.path).delete();
+          })
+          .catchError((_) {});
+    }
+    camera?.dispose();
     super.dispose();
   }
 
@@ -93,250 +182,133 @@ class _ReadingPageState extends State<ReadingPage>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        width: double.infinity,
-        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFFFF6A3), // Pastel yellow
-              Color(0xFFF48FE1), // Pastel pink/magenta
-            ],
+            colors: [Color(0xFFFFF6A3), Color(0xFFF48FE1)],
           ),
         ),
         child: SafeArea(
           child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            padding: const EdgeInsets.all(24),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const SizedBox(height: 24),
-                // Camera Preview Container (Centered top)
                 Container(
-                  width: 150,
-                  height: 150,
+                  width: 180,
+                  height: 180,
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.black, width: 3.0),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color.fromRGBO(0, 0, 0, 0.15),
-                        blurRadius: 8,
-                        offset: Offset(0, 6),
-                      ),
-                    ],
+                    border: Border.all(color: Colors.black, width: 3),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(21),
-                    child: _buildCameraWidget(),
-                  ),
+                  child: _camera?.value.isInitialized == true
+                      ? CameraPreview(_camera!)
+                      : const Center(child: CircularProgressIndicator()),
                 ),
-                const SizedBox(height: 32),
-
-                // Story Tab & Card Panel
-                Stack(
-                  clipBehavior: Clip.none,
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Main Story Text Box (White box with green border)
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(top: 40),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(
-                          color: const Color(0xFF66BB6A), // Green border
-                          width: 2.5,
-                        ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color.fromRGBO(0, 0, 0, 0.06),
-                            blurRadius: 8,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 16),
-                          // Story Title
-                          Text(
-                            widget.book.title.toUpperCase(),
-                            style: GoogleFonts.quicksand(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.black,
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          // Story body paragraphs
-                          Text(
-                            widget.book.passage,
-                            style: GoogleFonts.quicksand(
-                              fontSize: 18.0,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                              height: 1.4,
-                            ),
-                          ),
-                        ],
-                      ),
+                    Icon(
+                      Icons.fiber_manual_record,
+                      color: _recording ? Colors.red : Colors.grey,
+                      size: 16,
                     ),
-
-                    // Top Tab Headers (Read Aloud & Recording)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: Row(
-                        children: [
-                          // Read Aloud Tab
-                          Container(
-                            height: 42,
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(16),
-                                topRight: Radius.circular(16),
-                              ),
-                              border: Border.all(
-                                color: const Color(0xFF66BB6A), // Green border
-                                width: 2.5,
-                              ),
-                            ),
-                            child: Center(
-                              child: Text(
-                                'Read Aloud',
-                                style: GoogleFonts.quicksand(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.black,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-
-                          // Recording Tab
-                          Container(
-                            height: 42,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(16),
-                                topRight: Radius.circular(16),
-                              ),
-                              border: Border.all(
-                                color: const Color(0xFF66BB6A), // Green border
-                                width: 2.5,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                FadeTransition(
-                                  opacity: _blinkAnimation,
-                                  child: Container(
-                                    width: 12,
-                                    height: 12,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.redAccent,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Recording',
-                                  style: GoogleFonts.quicksand(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.redAccent,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _preparing
+                          ? 'Preparing camera and microphone…'
+                          : _recording
+                          ? 'Recording and transcribing'
+                          : 'Not recording',
+                      style: GoogleFonts.quicksand(fontWeight: FontWeight.w800),
                     ),
                   ],
                 ),
-                const SizedBox(height: 36),
-
-                // "I'm Done" Action Button
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.redAccent),
+                  ),
+                ],
+                const SizedBox(height: 22),
                 Container(
-                  width: 180,
-                  height: 48,
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color.fromRGBO(0, 0, 0, 0.12),
-                        blurRadius: 4,
-                        offset: const Offset(0, 4),
+                    color: Colors.white,
+                    border: Border.all(
+                      color: const Color(0xFF66BB6A),
+                      width: 2.5,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        widget.book.title.toUpperCase(),
+                        style: GoogleFonts.quicksand(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
+                      const SizedBox(height: 16),
+                      Text(
+                        widget.book.passage,
+                        style: GoogleFonts.quicksand(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
+                        ),
+                      ),
+                      if (_transcript.isNotEmpty) ...[
+                        const Divider(height: 32),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Live transcript: $_transcript',
+                            style: GoogleFonts.quicksand(color: Colors.black54),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => PreviewPage(book: widget.book),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(
-                        0xFF4A70FF,
-                      ), // Custom blue button color
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      'I\'m Done',
-                      style: GoogleFonts.quicksand(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
+                ),
+                const SizedBox(height: 28),
+                ElevatedButton(
+                  onPressed: _recording && !_finishing ? _finish : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4A70FF),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 42,
+                      vertical: 14,
                     ),
                   ),
+                  child: _finishing
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          "I'm Done",
+                          style: GoogleFonts.quicksand(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                 ),
-                const SizedBox(height: 40),
               ],
             ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildCameraWidget() {
-    if (_hasCameraError) {
-      return Image.asset('assets/icons/kai.png', fit: BoxFit.cover);
-    }
-
-    if (_isCameraInitialized && _cameraController != null) {
-      return FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: 150,
-          height: 150 * _cameraController!.value.aspectRatio,
-          child: CameraPreview(_cameraController!),
-        ),
-      );
-    }
-
-    return const Center(
-      child: CircularProgressIndicator(color: Color(0xFFF48FE1)),
     );
   }
 }

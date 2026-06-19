@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:student_mobile/models/quiz_question.dart';
 import 'package:student_mobile/models/reading_book.dart';
+import 'package:student_mobile/models/reading_session.dart';
 import 'package:student_mobile/pages/home_page.dart';
+import 'package:student_mobile/pages/reading_page.dart';
 import 'package:student_mobile/services/book_repository.dart';
 import 'package:student_mobile/services/student_repository.dart';
 
 class QuizPage extends StatefulWidget {
-  const QuizPage({super.key, required this.book});
+  const QuizPage({super.key, required this.book, required this.session});
 
   final ReadingBook book;
+  final ReadingSession session;
 
   @override
   State<QuizPage> createState() => _QuizPageState();
@@ -23,6 +26,7 @@ class _QuizPageState extends State<QuizPage> {
   int _currentStep = 0;
   int? _selectedOption;
   int _correctAnswers = 0;
+  final List<int> _answers = [];
   bool _isTurningIn = false;
 
   @override
@@ -32,13 +36,16 @@ class _QuizPageState extends State<QuizPage> {
   }
 
   void _recordCurrentAnswer(QuizQuestion question) {
-    if (_selectedOption == question.answerIndex) {
+    final answer = _selectedOption!;
+    _answers.add(answer);
+    if (answer == question.answerIndex) {
       _correctAnswers += 1;
     }
   }
 
   void _showCongratulationsDialog(int totalQuestions) {
     final percentage = ((_correctAnswers / totalQuestions) * 100).round();
+    final passed = _correctAnswers == totalQuestions;
 
     showDialog(
       context: context,
@@ -63,7 +70,7 @@ class _QuizPageState extends State<QuizPage> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Congratulations Bloomer',
+                passed ? 'Congratulations Bloomer' : 'Try That Reading Again',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.quicksand(
                   fontSize: 22,
@@ -130,50 +137,57 @@ class _QuizPageState extends State<QuizPage> {
                   _buildDialogButton(
                     label: 'Start Over',
                     color: const Color(0xFF3B82F6),
-                    onPressed: () {
-                      Navigator.pop(dialogContext);
-                      setState(() {
-                        _currentStep = 0;
-                        _selectedOption = null;
-                        _correctAnswers = 0;
-                      });
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  _buildDialogButton(
-                    label: 'Turn it In',
-                    color: const Color(0xFF00C853),
                     onPressed: () async {
-                      setState(() => _isTurningIn = true);
-
-                      try {
-                        await _studentRepository.completeBook(widget.book.id);
-                        if (!mounted) return;
-                        if (!dialogContext.mounted) return;
-
-                        Navigator.pop(dialogContext);
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const HomePage(),
-                          ),
-                          (route) => false,
-                        );
-                      } catch (error) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Could not save progress: $error'),
-                            ),
-                          );
-                        }
-                      } finally {
-                        if (mounted) {
-                          setState(() => _isTurningIn = false);
-                        }
-                      }
+                      Navigator.pop(dialogContext);
+                      await widget.session.discard();
+                      if (!mounted) return;
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ReadingPage(book: widget.book),
+                        ),
+                      );
                     },
                   ),
+                  if (passed) ...[
+                    const SizedBox(width: 12),
+                    _buildDialogButton(
+                      label: 'Turn it In',
+                      color: const Color(0xFF00C853),
+                      onPressed: () async {
+                        setState(() => _isTurningIn = true);
+
+                        try {
+                          await _studentRepository.submitReading(
+                            bookId: widget.book.id,
+                            session: widget.session,
+                            answers: _answers,
+                          );
+                          await widget.session.discard();
+                          if (!mounted || !dialogContext.mounted) return;
+
+                          Navigator.pop(dialogContext);
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(builder: (_) => const HomePage()),
+                            (route) => false,
+                          );
+                        } catch (error) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Could not upload submission: $error',
+                                ),
+                              ),
+                            );
+                          }
+                        } finally {
+                          if (mounted) setState(() => _isTurningIn = false);
+                        }
+                      },
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 12),

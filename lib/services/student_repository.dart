@@ -1,5 +1,6 @@
 import 'package:student_mobile/models/student_profile.dart';
 import 'package:student_mobile/models/student_progress.dart';
+import 'package:student_mobile/models/reading_session.dart';
 import 'package:student_mobile/services/book_repository.dart';
 import 'package:student_mobile/services/supabase_config.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -72,6 +73,9 @@ class StudentRepository {
       'user_id': userId,
       'books_completed': 0,
       'days_streak': 0,
+      'reading_level': 1,
+      'fluency_level': 1,
+      'comprehension_level': 1,
     });
 
     return StudentProgress(userId: userId, booksCompleted: 0, daysStreak: 0);
@@ -84,7 +88,48 @@ class StudentRepository {
         .eq('id', _currentUserId);
   }
 
-  Future<void> completeBook(String bookId) async {
-    await _supabase.rpc('complete_book', params: {'p_book_id': bookId});
+  Future<Set<String>> fetchCompletedBookIds() async {
+    final rows = await _supabase
+        .from('completed_books')
+        .select('book_id')
+        .eq('user_id', _currentUserId);
+    return rows.map((row) => row['book_id'] as String).toSet();
+  }
+
+  Future<void> submitReading({
+    required String bookId,
+    required ReadingSession session,
+    required List<int> answers,
+  }) async {
+    final userId = _currentUserId;
+    final extension = session.videoPath.toLowerCase().endsWith('.mov')
+        ? 'mov'
+        : 'mp4';
+    final objectPath =
+        '$userId/$bookId/${DateTime.now().toUtc().millisecondsSinceEpoch}.$extension';
+
+    await _supabase.storage
+        .from('reading-recordings')
+        .upload(
+          objectPath,
+          session.videoFile,
+          fileOptions: const FileOptions(upsert: false),
+        );
+
+    try {
+      await _supabase.rpc(
+        'finalize_reading_submission',
+        params: {
+          'p_book_id': bookId,
+          'p_video_path': objectPath,
+          'p_transcript': session.transcript,
+          'p_duration_seconds': session.duration.inSeconds,
+          'p_answers': answers,
+        },
+      );
+    } catch (_) {
+      await _supabase.storage.from('reading-recordings').remove([objectPath]);
+      rethrow;
+    }
   }
 }
