@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:speech_to_text/speech_to_text.dart';
 import 'package:student_mobile/models/reading_book.dart';
 import 'package:student_mobile/models/reading_session.dart';
 import 'package:student_mobile/pages/preview_page.dart';
@@ -18,17 +17,13 @@ class ReadingPage extends StatefulWidget {
 }
 
 class _ReadingPageState extends State<ReadingPage> {
-  final SpeechToText _speech = SpeechToText();
   final Stopwatch _stopwatch = Stopwatch();
   CameraController? _camera;
-  String _transcript = '';
-  final List<String> _transcriptSegments = [];
   String? _error;
   bool _preparing = true;
   bool _recording = false;
   bool _finishing = false;
   bool _handedOff = false;
-  bool _restartScheduled = false;
 
   @override
   void initState() {
@@ -55,28 +50,8 @@ class _ReadingPageState extends State<ReadingPage> {
       _camera = camera;
       await camera.initialize();
 
-      final speechReady = await _speech.initialize(
-        onStatus: (status) {
-          if (status == SpeechToText.doneStatus ||
-              status == SpeechToText.notListeningStatus) {
-            _restartSpeechAfterPause();
-          }
-        },
-        onError: (error) {
-          if (mounted && !_finishing) {
-            setState(() => _error = 'Speech recognition: ${error.errorMsg}');
-          }
-        },
-      );
-      if (!speechReady) {
-        throw StateError(
-          'Microphone or speech-recognition permission was denied.',
-        );
-      }
-
       await camera.startVideoRecording();
       _recording = true;
-      await _startListening();
       _stopwatch.start();
       if (mounted) {
         setState(() {
@@ -93,51 +68,16 @@ class _ReadingPageState extends State<ReadingPage> {
     }
   }
 
-  Future<void> _startListening() async {
-    if (_finishing || !_recording || _speech.isListening) return;
-    await _speech.listen(
-      onResult: (result) {
-        final words = result.recognizedWords.trim();
-        if (result.finalResult && words.isNotEmpty) {
-          _transcriptSegments.add(words);
-        }
-        if (mounted) {
-          setState(() {
-            _transcript = [
-              ..._transcriptSegments,
-              if (!result.finalResult && words.isNotEmpty) words,
-            ].join(' ').trim();
-          });
-        }
-      },
-      listenOptions: SpeechListenOptions(
-        listenMode: ListenMode.dictation,
-        partialResults: true,
-        cancelOnError: false,
-      ),
-    );
-  }
-
-  void _restartSpeechAfterPause() {
-    if (!_recording || _finishing || _restartScheduled) return;
-    _restartScheduled = true;
-    Future<void>.delayed(const Duration(milliseconds: 250), () async {
-      _restartScheduled = false;
-      if (_recording && !_finishing) await _startListening();
-    });
-  }
-
   Future<void> _finish() async {
     final camera = _camera;
     if (camera == null || !camera.value.isRecordingVideo || _finishing) return;
     setState(() => _finishing = true);
     try {
       _stopwatch.stop();
-      await _speech.stop();
       final video = await camera.stopVideoRecording();
       final session = ReadingSession(
         videoPath: video.path,
-        transcript: _transcript.trim(),
+        transcript: '',
         duration: _stopwatch.elapsed,
       );
       _handedOff = true;
@@ -164,7 +104,6 @@ class _ReadingPageState extends State<ReadingPage> {
   @override
   void dispose() {
     _stopwatch.stop();
-    _speech.cancel();
     final camera = _camera;
     if (!_handedOff && camera?.value.isRecordingVideo == true) {
       camera!
@@ -264,16 +203,6 @@ class _ReadingPageState extends State<ReadingPage> {
                           height: 1.4,
                         ),
                       ),
-                      if (_transcript.isNotEmpty) ...[
-                        const Divider(height: 32),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Live transcript: $_transcript',
-                            style: GoogleFonts.quicksand(color: Colors.black54),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),

@@ -90,6 +90,19 @@ insert into storage.buckets (id, name, public)
 values ('reading-recordings', 'reading-recordings', false)
 on conflict (id) do update set public = false;
 
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'transcription-audio',
+  'transcription-audio',
+  false,
+  26214400,
+  array['audio/mp4']
+)
+on conflict (id) do update set
+  public = false,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -355,5 +368,32 @@ create policy "Users can delete own reading recordings"
   for delete to authenticated
   using (
     bucket_id = 'reading-recordings'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "Users can upload own transcription audio" on storage.objects;
+create policy "Users can upload own transcription audio"
+  on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'transcription-audio'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "Users can read own transcription audio" on storage.objects;
+create policy "Users can read own transcription audio"
+  on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'transcription-audio'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "Users can delete own transcription audio" on storage.objects;
+create policy "Users can delete own transcription audio"
+  on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'transcription-audio'
     and (storage.foldername(name))[1] = auth.uid()::text
   );

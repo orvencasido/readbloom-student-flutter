@@ -12,7 +12,6 @@ dependencies:
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
   camera: ^0.10.5+9
-  speech_to_text: ^7.0.0
   supabase_flutter: ^2.0.0
   video_player: ^2.9.2
 

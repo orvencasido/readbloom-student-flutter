@@ -139,6 +139,9 @@ class _QuizPageState extends State<QuizPage> {
                     color: const Color(0xFF3B82F6),
                     onPressed: () async {
                       Navigator.pop(dialogContext);
+                      await _studentRepository.deleteReadingRecording(
+                        widget.session,
+                      );
                       await widget.session.discard();
                       if (!mounted) return;
                       Navigator.pushReplacement(

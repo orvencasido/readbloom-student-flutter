@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:student_mobile/models/student_profile.dart';
 import 'package:student_mobile/models/student_progress.dart';
 import 'package:student_mobile/models/reading_session.dart';
@@ -6,6 +8,8 @@ import 'package:student_mobile/services/supabase_config.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class StudentRepository {
+  static const _maximumTranscriptionBytes = 25 * 1024 * 1024;
+
   StudentRepository({SupabaseClient? client}) : _client = client;
 
   final SupabaseClient? _client;
@@ -101,12 +105,34 @@ class StudentRepository {
     required ReadingSession session,
     required List<int> answers,
   }) async {
-    final userId = _currentUserId;
+    final uploadedSession = session.remoteVideoPath == null
+        ? await uploadReadingRecording(bookId: bookId, session: session)
+        : session;
+    final objectPath = uploadedSession.remoteVideoPath!;
+
+    await _supabase.rpc(
+      'finalize_reading_submission',
+      params: {
+        'p_book_id': bookId,
+        'p_video_path': objectPath,
+        'p_transcript': uploadedSession.transcript,
+        'p_duration_seconds': uploadedSession.duration.inSeconds,
+        'p_answers': answers,
+      },
+    );
+  }
+
+  Future<ReadingSession> uploadReadingRecording({
+    required String bookId,
+    required ReadingSession session,
+  }) async {
+    if (session.remoteVideoPath != null) return session;
+
     final extension = session.videoPath.toLowerCase().endsWith('.mov')
         ? 'mov'
         : 'mp4';
     final objectPath =
-        '$userId/$bookId/${DateTime.now().toUtc().millisecondsSinceEpoch}.$extension';
+        '$_currentUserId/$bookId/${DateTime.now().toUtc().millisecondsSinceEpoch}.$extension';
 
     await _supabase.storage
         .from('reading-recordings')
@@ -115,21 +141,53 @@ class StudentRepository {
           session.videoFile,
           fileOptions: const FileOptions(upsert: false),
         );
+    return session.copyWith(remoteVideoPath: objectPath);
+  }
 
-    try {
-      await _supabase.rpc(
-        'finalize_reading_submission',
-        params: {
-          'p_book_id': bookId,
-          'p_video_path': objectPath,
-          'p_transcript': session.transcript,
-          'p_duration_seconds': session.duration.inSeconds,
-          'p_answers': answers,
-        },
+  Future<String> uploadTranscriptionAudio({
+    required String bookId,
+    required File audioFile,
+  }) async {
+    if (await audioFile.length() > _maximumTranscriptionBytes) {
+      throw StateError(
+        'The extracted audio exceeds the 25 MB transcription limit.',
       );
-    } catch (_) {
+    }
+    final objectPath =
+        '$_currentUserId/$bookId/${DateTime.now().toUtc().millisecondsSinceEpoch}.m4a';
+    await _supabase.storage
+        .from('transcription-audio')
+        .upload(
+          objectPath,
+          audioFile,
+          fileOptions: const FileOptions(
+            upsert: false,
+            contentType: 'audio/mp4',
+          ),
+        );
+    return objectPath;
+  }
+
+  Future<String> transcribeReadingAudio(String audioPath) async {
+    final response = await _supabase.functions.invoke(
+      'transcribe-recording',
+      body: {'audioPath': audioPath},
+    );
+    final data = response.data;
+    if (data is! Map || data['transcript'] is! String) {
+      throw StateError('The transcription service returned an invalid result.');
+    }
+    return (data['transcript'] as String).trim();
+  }
+
+  Future<void> deleteTranscriptionAudio(String audioPath) async {
+    await _supabase.storage.from('transcription-audio').remove([audioPath]);
+  }
+
+  Future<void> deleteReadingRecording(ReadingSession session) async {
+    final objectPath = session.remoteVideoPath;
+    if (objectPath != null) {
       await _supabase.storage.from('reading-recordings').remove([objectPath]);
-      rethrow;
     }
   }
 }

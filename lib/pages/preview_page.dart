@@ -6,6 +6,8 @@ import 'package:student_mobile/models/reading_book.dart';
 import 'package:student_mobile/models/reading_session.dart';
 import 'package:student_mobile/pages/quiz_page.dart';
 import 'package:student_mobile/pages/reading_page.dart';
+import 'package:student_mobile/services/audio_extractor.dart';
+import 'package:student_mobile/services/student_repository.dart';
 import 'package:video_player/video_player.dart';
 
 class PreviewPage extends StatefulWidget {
@@ -19,24 +21,99 @@ class PreviewPage extends StatefulWidget {
 }
 
 class _PreviewPageState extends State<PreviewPage> {
+  final StudentRepository _studentRepository = StudentRepository();
   late final VideoPlayerController _video;
+  late ReadingSession _session;
   bool _ready = false;
   bool _leaving = false;
+  bool _transcribing = true;
+  String? _transcriptionError;
 
   @override
   void initState() {
     super.initState();
+    _session = widget.session;
     _video = VideoPlayerController.file(File(widget.session.videoPath))
       ..initialize().then((_) {
         if (mounted) setState(() => _ready = true);
       });
+    _transcribeRecording();
+  }
+
+  Future<void> _transcribeRecording() async {
+    if (_leaving) return;
+    if (mounted) {
+      setState(() {
+        _transcribing = true;
+        _transcriptionError = null;
+      });
+    }
+
+    File? audioFile;
+    String? remoteAudioPath;
+    String? transcript;
+    Object? transcriptionError;
+    try {
+      _session = await _studentRepository.uploadReadingRecording(
+        bookId: widget.book.id,
+        session: _session,
+      );
+      if (_leaving) {
+        await _studentRepository.deleteReadingRecording(_session);
+        return;
+      }
+      audioFile = await AudioExtractor.extractFromVideo(_session.videoPath);
+      if (_leaving) return;
+
+      remoteAudioPath = await _studentRepository.uploadTranscriptionAudio(
+        bookId: widget.book.id,
+        audioFile: audioFile,
+      );
+      if (_leaving) return;
+
+      transcript = await _studentRepository.transcribeReadingAudio(
+        remoteAudioPath,
+      );
+    } catch (error) {
+      transcriptionError = error;
+    } finally {
+      if (remoteAudioPath != null) {
+        try {
+          await _studentRepository.deleteTranscriptionAudio(remoteAudioPath);
+        } catch (_) {
+          // The Edge Function may already have removed the temporary object.
+        }
+      }
+      try {
+        if (audioFile != null && await audioFile.exists()) {
+          await audioFile.delete();
+        }
+      } catch (_) {
+        // Temporary local files can also be removed by OS cache cleanup.
+      }
+    }
+
+    if (!mounted || _leaving) return;
+    setState(() {
+      if (transcriptionError == null) {
+        _session = _session.copyWith(transcript: transcript ?? '');
+      } else {
+        _transcriptionError = transcriptionError.toString();
+      }
+      _transcribing = false;
+    });
   }
 
   Future<void> _startOver() async {
     if (_leaving) return;
     setState(() => _leaving = true);
     await _video.pause();
-    await widget.session.discard();
+    try {
+      await _studentRepository.deleteReadingRecording(_session);
+    } catch (_) {
+      // A failed cleanup must not trap the learner on the preview screen.
+    }
+    await _session.discard();
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
@@ -51,7 +128,7 @@ class _PreviewPageState extends State<PreviewPage> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => QuizPage(book: widget.book, session: widget.session),
+        builder: (_) => QuizPage(book: widget.book, session: _session),
       ),
     );
   }
@@ -154,12 +231,41 @@ class _PreviewPageState extends State<PreviewPage> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Text(
-                    widget.session.transcript.isEmpty
-                        ? 'No speech was recognized. You can start over and record again.'
-                        : 'Transcript\n${widget.session.transcript}',
-                    style: GoogleFonts.quicksand(fontWeight: FontWeight.w600),
-                  ),
+                  child: _transcribing
+                      ? const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 12),
+                            Text('Extracting and transcribing audio…'),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _transcriptionError != null
+                                  ? 'Could not transcribe the recording.\n$_transcriptionError'
+                                  : _session.transcript.isEmpty
+                                  ? 'No speech was found in the recorded video.'
+                                  : 'Transcript\n${_session.transcript}',
+                              style: GoogleFonts.quicksand(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (_transcriptionError != null) ...[
+                              const SizedBox(height: 8),
+                              TextButton.icon(
+                                onPressed: _transcribeRecording,
+                                icon: const Icon(Icons.refresh_rounded),
+                                label: const Text('Retry transcription'),
+                              ),
+                            ],
+                          ],
+                        ),
                 ),
                 const SizedBox(height: 28),
                 Wrap(
@@ -171,7 +277,10 @@ class _PreviewPageState extends State<PreviewPage> {
                       label: const Text('Start Over'),
                     ),
                     ElevatedButton.icon(
-                      onPressed: _leaving || widget.session.transcript.isEmpty
+                      onPressed:
+                          _leaving ||
+                              _transcribing ||
+                              _session.transcript.isEmpty
                           ? null
                           : _continueToQuiz,
                       style: ElevatedButton.styleFrom(

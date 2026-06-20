@@ -49,3 +49,30 @@ flutter run \
 ```
 
 Without these values, the app opens but the home book list shows a setup error instead of dummy content.
+
+## Recorded-video transcription
+
+Speech recognition runs after recording so Android can preserve the video's
+audio. Android copies the recorded video's existing AAC audio track into a
+temporary M4A file without re-recording or re-encoding it. The original video
+is uploaded to `reading-recordings`; only the temporary audio is uploaded to
+`transcription-audio` and sent to OpenAI. Both the app and Edge Function clean
+up temporary audio. The returned text is stored in
+`reading_submissions.transcript` when the learner turns in the quiz.
+
+Set the server-side OpenAI key and deploy the function:
+
+```bash
+supabase secrets set OPENAI_API_KEY=your-openai-api-key
+supabase functions deploy transcribe-recording --no-verify-jwt
+```
+
+Run `supabase/schema.sql` again before deploying so the private
+`transcription-audio` bucket and its per-user policies exist.
+
+Never put `OPENAI_API_KEY` in Flutter or pass it with `--dart-define`. The
+function validates the signed-in user itself before reading the private file.
+The `--no-verify-jwt` option only disables the Edge gateway's legacy JWT check;
+it does not make the function public. The
+current transcription API accepts MP4 input up to 25 MB, so recordings above
+that size need server-side audio extraction/chunking before transcription.
