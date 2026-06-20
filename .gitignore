@@ -85,27 +85,5 @@ Desktop.ini
 # Dependencies
 node_modules/
 
-# Flutter
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.packages
-build/
-
-# Android
-android/.gradle/
-android/local.properties
-
-# iOS
-ios/Pods/
- 
 # Supabase
 supabase/.temp/
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.dbnode_modules/
