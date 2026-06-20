@@ -85,5 +85,5 @@ Desktop.ini
 # Dependencies
 node_modules/
 
-# Supabase
+# Supabase  
 supabase/.temp/
