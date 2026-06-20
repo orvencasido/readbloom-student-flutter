@@ -98,7 +98,7 @@ android/local.properties
 
 # iOS
 ios/Pods/
-
+ 
 # Supabase
 supabase/.temp/
 
