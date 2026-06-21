@@ -1,6 +1,6 @@
 {
-    "name": "student_mobile",
-    "short_name": "student_mobile",
+    "name": "ReadBloom",
+    "short_name": "ReadBloom",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

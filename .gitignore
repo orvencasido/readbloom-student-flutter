@@ -81,3 +81,6 @@ Desktop.ini
 /ios/Runner/GoogleService-Info.plist
 /ios/Pods/
 /ios/.bundle/
+
+node_modules/
+supabase/.temp/
